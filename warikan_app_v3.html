@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#f4f6fb">
+  <title>割り勘差額計算</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --line: #d9deea;
+      --accent: #2563eb;
+      --accent-soft: #e8f0ff;
+      --danger: #c62828;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px 16px calc(28px + env(safe-area-inset-bottom));
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(100%, 460px); margin: 0 auto; }
+    h1 { margin: 4px 0 8px; font-size: 28px; }
+    .intro {
+      margin: 0 0 20px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    .card {
+      background: var(--card);
+      padding: 18px;
+      border-radius: 20px;
+      box-shadow: 0 10px 28px rgba(31, 41, 55, 0.08);
+    }
+    .field { margin-bottom: 16px; }
+    label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    input, select, button {
+      width: 100%;
+      min-height: 50px;
+      border-radius: 13px;
+      font-size: 16px;
+    }
+    input, select {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      padding: 11px 13px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    button {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      touch-action: manipulation;
+    }
+    button:active { transform: scale(0.99); }
+    .secondary {
+      margin-top: 10px;
+      background: #eef1f6;
+      color: var(--text);
+    }
+    .error {
+      min-height: 20px;
+      margin-top: 12px;
+      color: var(--danger);
+      font-size: 14px;
+    }
+    .result {
+      display: none;
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 16px;
+      background: var(--accent-soft);
+    }
+    .result.show { display: block; }
+    .result-label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .result-main {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .details {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .note {
+      margin-top: 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>割り勘差額計算</h1>
+    <p class="intro">
+      片方の支払った金額と2人分の合計金額を入力すると、差額の半分を計算します。
+    </p>
+
+    <section class="card">
+      <form id="calcForm">
+        <div class="field">
+          <label for="payer">金額を入力する人</label>
+          <select id="payer">
+            <option value="mai">まい</option>
+            <option value="komei">こうめい</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="paidAmount">その人が支払った金額</label>
+          <input id="paidAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="例：3500" required>
+        </div>
+
+        <div class="field">
+          <label for="totalAmount">2人分の合計金額</label>
+          <input id="totalAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="例：5000" required>
+        </div>
+
+        <button type="submit">計算する</button>
+        <button type="button" class="secondary" id="resetBtn">リセット</button>
+      </form>
+
+      <div class="error" id="error" aria-live="polite"></div>
+
+      <div class="result" id="result" aria-live="polite">
+        <div class="result-label">精算結果</div>
+        <div class="result-main" id="resultMain"></div>
+        <div class="details" id="details"></div>
+      </div>
+    </section>
+
+    <p class="note">計算式：入力した人の支払額と、もう片方の支払額との差額 ÷ 2</p>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const form = document.getElementById("calcForm");
+      const payer = document.getElementById("payer");
+      const paidAmount = document.getElementById("paidAmount");
+      const totalAmount = document.getElementById("totalAmount");
+      const resetBtn = document.getElementById("resetBtn");
+      const error = document.getElementById("error");
+      const result = document.getElementById("result");
+      const resultMain = document.getElementById("resultMain");
+      const details = document.getElementById("details");
+
+      function formatYen(value) {
+        return new Intl.NumberFormat("ja-JP", {
+          style: "currency",
+          currency: "JPY",
+          maximumFractionDigits: 2
+        }).format(value);
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+
+        error.textContent = "";
+        result.classList.remove("show");
+
+        const paid = Number(paidAmount.value);
+        const total = Number(totalAmount.value);
+
+        if (!Number.isFinite(paid) || !Number.isFinite(total)) {
+          error.textContent = "金額を入力してください。";
+          return;
+        }
+
+        if (paid < 0 || total < 0) {
+          error.textContent = "0円以上の金額を入力してください。";
+          return;
+        }
+
+        if (paid > total) {
+          error.textContent = "片方の支払額は、合計金額以下にしてください。";
+          return;
+        }
+
+        const otherPaid = total - paid;
+        const settlement = Math.abs(paid - otherPaid) / 2;
+
+        const selectedName = payer.value === "mai" ? "まい" : "こうめい";
+        const otherName = payer.value === "mai" ? "こうめい" : "まい";
+
+        if (Math.abs(paid - otherPaid) < 0.000001) {
+          resultMain.textContent = "精算は必要ありません";
+        } else if (paid > otherPaid) {
+          resultMain.textContent = `${selectedName} → ${otherName} に ${formatYen(settlement)}`;
+        } else {
+          resultMain.textContent = `${otherName} → ${selectedName} に ${formatYen(settlement)}`;
+        }
+
+        details.textContent =
+          `${selectedName}の支払額 ${formatYen(paid)} ／ ` +
+          `${otherName}の支払額 ${formatYen(otherPaid)} ／ ` +
+          `差額の半分 ${formatYen(settlement)}`;
+
+        result.classList.add("show");
+      });
+
+      resetBtn.addEventListener("click", function () {
+        form.reset();
+        error.textContent = "";
+        result.classList.remove("show");
+        paidAmount.focus();
+      });
+    })();
+  </script>
+</body>
+</html>
